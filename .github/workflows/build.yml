@@ -1,0 +1,54 @@
+name: Build
+
+on:
+  workflow_call:
+  push:
+    branches:
+      - 'main'
+
+permissions:
+  contents: read
+
+env:
+  HOMEBREW_DEVELOPER: 1
+  HOMEBREW_NO_AUTO_UPDATE: 1
+  HOMEBREW_ARM64_TESTING: 1
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: 10.11-cross-${{github.run_id}}
+          - os: 11-arm64-cross-${{github.run_id}}
+          - os: ubuntu-latest
+            container: '{"image": "ghcr.io/homebrew/ubuntu22.04:master", "options": "--user=linuxbrew"}'
+            workdir: /github/home
+          - os: ubuntu-22.04-arm
+            container: '{"image": "ghcr.io/homebrew/ubuntu22.04:master", "options": "--user=linuxbrew"}'
+            workdir: /github/home
+      fail-fast: false
+    runs-on: ${{matrix.os}}
+    container: ${{matrix.container && fromJSON(matrix.container) || ''}}
+    defaults:
+      run:
+        working-directory: ${{matrix.workdir || github.workspace}}
+    steps:
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@master
+
+      - run: brew test-bot --only-cleanup-before
+
+      - run: brew test-bot --only-setup
+
+      - name: Build Portable Ruby
+        run: |
+          mkdir -p bottle/
+          cd bottle
+          brew portable-package --verbose portable-ruby
+
+      - name: Upload Portable Ruby
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bottles_${{matrix.os}}
+          path: ${{matrix.workdir || github.workspace}}/bottle
